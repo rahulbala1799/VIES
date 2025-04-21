@@ -321,30 +321,32 @@ def generate_csv():
         
         generator = UPLOADS[session_id]
         
-        # Create a CSV file with specific headers required for VIES reporting
+        # Create a CSV file with the exact format shown in the example
         output = io.StringIO()
         writer = csv.writer(output, delimiter=';')
         
-        # Write headers - including "Art der Leistung" as requested
-        writer.writerow([
-            'Land', 
-            'USt-IdNr.', 
-            'Art der Leistung', 
-            'Bemessungsgrundlage', 
-            'Kunde'
-        ])
+        # Write version headers
+        writer.writerow(['#v3.0'])
+        writer.writerow(['#v3.2.0'])
         
-        # Write data
+        # Write the special header
+        writer.writerow(['Umsatzsteue Summe (Eur Art der Leistu Importmeldung'])
+        
+        # Write data rows
         for transaction in generator.get_all_transactions():
-            # Map "Other Services" to "S" for Art der Leistung
-            art_der_leistung = 'S' if transaction.get('transaction_type') == 'S' else 'L'
+            # Combine country code and VAT number without spaces
+            vat_id = f"{transaction.get('country_code', '')}{transaction.get('vat_number', '')}"
+            
+            # Format amount with proper alignment
+            amount = f"{transaction.get('amount', 0):.0f}"
+            
+            # For services, use 'S'
+            service_type = 'S' if transaction.get('transaction_type') == 'S' else 'L'
             
             writer.writerow([
-                transaction.get('country_code', ''),
-                transaction.get('vat_number', ''),
-                art_der_leistung,
-                f"{transaction.get('amount', 0):.2f}".replace('.', ','),
-                transaction.get('customer', '')
+                vat_id,
+                amount,
+                service_type
             ])
         
         output.seek(0)
