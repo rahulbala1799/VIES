@@ -11,6 +11,38 @@ from collections import defaultdict
 class ExcelProcessor:
     """Process Excel files containing VIES transaction data."""
     
+    # VAT number format patterns by country code
+    VAT_FORMATS = {
+        'AT': r'^U\d{8}$',                 # Austria
+        'BE': r'^\d{10}$',                 # Belgium
+        'BG': r'^\d{9,10}$',               # Bulgaria
+        'CY': r'^\d{8}[A-Z]$',             # Cyprus
+        'CZ': r'^\d{8,10}$',               # Czech Republic
+        'DE': r'^\d{9}$',                  # Germany
+        'DK': r'^\d{8}$',                  # Denmark
+        'EE': r'^\d{9}$',                  # Estonia
+        'EL': r'^\d{9}$',                  # Greece
+        'ES': r'^[A-Z0-9]\d{7}[A-Z0-9]$',  # Spain
+        'FI': r'^\d{8}$',                  # Finland
+        'FR': r'^[A-Z0-9]{2}\d{9}$',       # France
+        'GB': r'^\d{9}$|^\d{12}$|^GD\d{3}$|^HA\d{3}$',  # United Kingdom
+        'HR': r'^\d{11}$',                 # Croatia
+        'HU': r'^\d{8}$',                  # Hungary
+        'IE': r'^\d{7}[A-Z]{1,2}$',        # Ireland
+        'IT': r'^\d{11}$',                 # Italy
+        'LT': r'^\d{9}$|^\d{12}$',         # Lithuania
+        'LU': r'^\d{8}$',                  # Luxembourg
+        'LV': r'^\d{11}$',                 # Latvia
+        'MT': r'^\d{8}$',                  # Malta
+        'NL': r'^\d{9}B\d{2}$',            # Netherlands
+        'PL': r'^\d{10}$',                 # Poland
+        'PT': r'^\d{9}$',                  # Portugal
+        'RO': r'^\d{2,10}$',               # Romania
+        'SE': r'^\d{12}$',                 # Sweden
+        'SI': r'^\d{8}$',                  # Slovenia
+        'SK': r'^\d{10}$',                 # Slovakia
+    }
+    
     def __init__(self, file_path=None, file_content=None):
         """
         Initialize the Excel processor.
@@ -25,6 +57,7 @@ class ExcelProcessor:
         self.errors = []
         self.warnings = []
         self.blank_vat_entries = []
+        self.suspicious_vat_entries = []
         
     def load_data(self):
         """
@@ -64,6 +97,53 @@ class ExcelProcessor:
             self.errors.append(f"Error loading Excel file: {str(e)}")
             print(f"Error loading Excel file: {str(e)}")
             return False
+            
+    def validate_vat_number(self, country_code, vat_number):
+        """
+        Validate the VAT number format based on country code.
+        
+        Args:
+            country_code (str): Two-letter country code
+            vat_number (str): VAT number without country code
+            
+        Returns:
+            tuple: (is_valid, suspicion_reason)
+                is_valid: bool indicating if the VAT number format is valid
+                suspicion_reason: str with reason for suspicion, or None if not suspicious
+        """
+        if not country_code or not vat_number:
+            return False, "Missing country code or VAT number"
+            
+        country_code = country_code.upper()
+        vat_number = vat_number.strip()
+        
+        # Check for repeating digits (more than 3 in a row)
+        repeat_pattern = re.search(r'(\d)\1{3,}', vat_number)
+        if repeat_pattern:
+            digit = repeat_pattern.group(1)
+            return False, f"Contains {len(repeat_pattern.group(0))} repeating '{digit}' digits"
+            
+        # Check for sequential digits (more than 4 in sequence)
+        for i in range(len(vat_number) - 4):
+            if vat_number[i:i+5].isdigit():
+                if vat_number[i:i+5] in '01234567890' or vat_number[i:i+5] in '98765432109':
+                    return False, f"Contains sequential digits: {vat_number[i:i+5]}"
+        
+        # Check for all same digits
+        if vat_number.isdigit() and len(set(vat_number)) == 1:
+            return False, f"All digits are the same: {vat_number[0]}"
+            
+        # Check if VAT number is suspiciously short
+        if len(vat_number) < 5 and vat_number.isdigit():
+            return False, f"VAT number is suspiciously short ({len(vat_number)} digits)"
+            
+        # Check against country-specific format if available
+        if country_code in self.VAT_FORMATS:
+            pattern = self.VAT_FORMATS[country_code]
+            if not re.match(pattern, vat_number):
+                return False, f"Does not match expected format for {country_code}"
+                
+        return True, None
             
     def map_columns(self):
         """
@@ -173,6 +253,7 @@ class ExcelProcessor:
         valid_transactions = []
         blank_vat_rows = []
         invalid_rows = []
+        suspicious_vat_rows = []
         total_amount = 0
         
         # Dictionary to store aggregated data by VAT ID
@@ -183,7 +264,9 @@ class ExcelProcessor:
             'amount': 0,
             'transaction_type': '',
             'line_numbers': set(),
-            'is_valid': True
+            'is_valid': True,
+            'is_suspicious': False,
+            'suspicion_reason': None
         })
         
         for i, row in self.data.iterrows():
@@ -256,8 +339,6 @@ class ExcelProcessor:
                             transaction_type = 'L'  # Goods/Supplies
                             print(f"Setting transaction type to L for '{type_text}'")
                 
-                # Check for blank VAT
-                is_blank_vat = not vat_number or vat_number.strip() == ''
                 # Check if this is a total line (not a missing VAT entry)
                 is_total_line = False
                 if 'line' in column_map:
@@ -273,6 +354,18 @@ class ExcelProcessor:
                         is_total_line = True
                         print(f"Detected total line from customer field: {line_number}")
                 
+                # Check for blank VAT
+                is_blank_vat = not vat_number or vat_number.strip() == ''
+                
+                # Validate VAT number if present
+                is_suspicious = False
+                suspicion_reason = None
+                if not is_blank_vat and not is_total_line:
+                    is_valid, suspicion_reason = self.validate_vat_number(country_code, vat_number)
+                    if not is_valid:
+                        is_suspicious = True
+                        print(f"Suspicious VAT in row {line_number}: {country_code}{vat_number} - {suspicion_reason}")
+                
                 # Add to transactions with validation
                 transaction = {
                     'line_number': line_number,
@@ -282,13 +375,19 @@ class ExcelProcessor:
                     'amount': amount,
                     'transaction_type': transaction_type.upper(),
                     'is_blank_vat': is_blank_vat and not is_total_line,
-                    'is_total_line': is_total_line
+                    'is_total_line': is_total_line,
+                    'is_suspicious': is_suspicious,
+                    'suspicion_reason': suspicion_reason
                 }
                 
                 # Track blank VAT entries separately (but not total lines)
                 if is_blank_vat and not is_total_line:
                     blank_vat_rows.append(transaction)
                     continue
+                    
+                # Track suspicious VAT entries
+                if is_suspicious:
+                    suspicious_vat_rows.append(transaction)
                     
                 # If it's a total line, we don't process it as a normal transaction
                 if is_total_line:
@@ -320,6 +419,11 @@ class ExcelProcessor:
                 elif not aggregated_by_vat[vat_key]['transaction_type']:
                     aggregated_by_vat[vat_key]['transaction_type'] = transaction_type
                     
+                # Mark as suspicious if any of the entries is suspicious
+                if is_suspicious:
+                    aggregated_by_vat[vat_key]['is_suspicious'] = True
+                    aggregated_by_vat[vat_key]['suspicion_reason'] = suspicion_reason
+                    
             except Exception as e:
                 self.errors.append(f"Error processing row {i+1}: {str(e)}")
                 continue
@@ -336,18 +440,22 @@ class ExcelProcessor:
                 'customer': customer_note,
                 'line_numbers': ", ".join(sorted(data['line_numbers'])),
                 'multiple_customers': len(data['customer_numbers']) > 1,
-                'is_blank_vat': False
+                'is_blank_vat': False,
+                'is_suspicious': data['is_suspicious'],
+                'suspicion_reason': data['suspicion_reason']
             }
             aggregated_transactions.append(transaction)
             
         # Store blank VAT entries for display
         self.blank_vat_entries = blank_vat_rows
+        self.suspicious_vat_entries = suspicious_vat_rows
             
         # Create metrics
         metrics = {
             'total_rows': total_rows,
             'valid_transactions': len(valid_transactions),
             'blank_vat_entries': len(blank_vat_rows),
+            'suspicious_vat_entries': len(suspicious_vat_rows),
             'invalid_rows': len(invalid_rows),
             'combined_transactions': len(aggregated_transactions),
             'total_amount': round(total_amount, 2)
@@ -357,6 +465,7 @@ class ExcelProcessor:
             'original_transactions': valid_transactions,
             'aggregated_transactions': aggregated_transactions,
             'blank_vat_entries': blank_vat_rows,
+            'suspicious_vat_entries': suspicious_vat_rows,
             'invalid_rows': invalid_rows
         }, self.errors, self.warnings, metrics
         

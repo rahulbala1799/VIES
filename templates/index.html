@@ -77,6 +77,10 @@
                             <div class="card-label">Blank VAT Entries</div>
                             <div class="card-value">{{ metrics.blank_vat_entries }}</div>
                         </div>
+                        <div class="dashboard-card error">
+                            <div class="card-label">Suspicious VAT IDs</div>
+                            <div class="card-value">{{ metrics.suspicious_vat_entries }}</div>
+                        </div>
                     </div>
                     
                     <!-- Processed Transactions Table -->
@@ -94,7 +98,7 @@
                             </thead>
                             <tbody>
                                 {% for transaction in transactions %}
-                                <tr class="{% if transaction.multiple_customers %}multiple-customer{% endif %}">
+                                <tr class="{% if transaction.multiple_customers %}multiple-customer{% endif %} {% if transaction.is_suspicious %}suspicious-row{% endif %}">
                                     <td>{{ transaction.line_numbers }}</td>
                                     <td>
                                         {{ transaction.customer }}
@@ -102,7 +106,12 @@
                                         <span class="note">Multiple customer numbers</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ transaction.country_code }}{{ transaction.vat_number }}</td>
+                                    <td>
+                                        {{ transaction.country_code }}{{ transaction.vat_number }}
+                                        {% if transaction.is_suspicious %}
+                                        <span class="warning-note">{{ transaction.suspicion_reason }}</span>
+                                        {% endif %}
+                                    </td>
                                     <td class="amount">{{ transaction.amount }}</td>
                                     <td>{{ "Services" if transaction.transaction_type == "S" else "Goods" }}</td>
                                 </tr>
@@ -110,6 +119,37 @@
                             </tbody>
                         </table>
                     </div>
+                    
+                    {% if suspicious_vat_entries %}
+                    <!-- Suspicious VAT entries table -->
+                    <h3>Suspicious VAT Numbers (Review Required)</h3>
+                    <div class="transaction-table suspicious-vat-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Line Number</th>
+                                    <th>Customer</th>
+                                    <th>VAT Number</th>
+                                    <th>Issue</th>
+                                    <th>Amount (EUR)</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in suspicious_vat_entries %}
+                                <tr class="suspicious-row">
+                                    <td>{{ entry.line_number }}</td>
+                                    <td>{{ entry.customer if entry.customer else "-" }}</td>
+                                    <td class="suspicious-data">{{ entry.country_code }}{{ entry.vat_number }}</td>
+                                    <td class="warning-reason">{{ entry.suspicion_reason }}</td>
+                                    <td class="amount">{{ entry.amount }}</td>
+                                    <td>{{ "Services" if entry.transaction_type == "S" else "Goods" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
                     
                     {% if blank_vat_entries %}
                     <!-- Blank VAT entries table -->

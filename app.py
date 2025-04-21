@@ -128,6 +128,7 @@ def upload_excel():
                 'index.html', 
                 transactions=data['aggregated_transactions'],
                 blank_vat_entries=data['blank_vat_entries'],
+                suspicious_vat_entries=data['suspicious_vat_entries'],
                 metrics=metrics,
                 total_amount=f"{metrics['total_amount']:.2f}",
                 session_id=session_id
