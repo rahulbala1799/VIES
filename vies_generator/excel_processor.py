@@ -258,6 +258,20 @@ class ExcelProcessor:
                 
                 # Check for blank VAT
                 is_blank_vat = not vat_number or vat_number.strip() == ''
+                # Check if this is a total line (not a missing VAT entry)
+                is_total_line = False
+                if 'line' in column_map:
+                    line_value = str(row[column_map['line']]).strip().lower()
+                    if line_value == 'total' or 'total' in line_value:
+                        is_total_line = True
+                        print(f"Detected total line from line field: {line_number}")
+                
+                # Also check if "Total" appears in the customer field
+                if 'customer' in column_map and not is_total_line:
+                    customer_value = str(row[column_map['customer']]).strip().lower()
+                    if customer_value == 'total' or 'total' in customer_value:
+                        is_total_line = True
+                        print(f"Detected total line from customer field: {line_number}")
                 
                 # Add to transactions with validation
                 transaction = {
@@ -267,12 +281,17 @@ class ExcelProcessor:
                     'vat_number': vat_number.replace(' ', ''),
                     'amount': amount,
                     'transaction_type': transaction_type.upper(),
-                    'is_blank_vat': is_blank_vat
+                    'is_blank_vat': is_blank_vat and not is_total_line,
+                    'is_total_line': is_total_line
                 }
                 
-                # Track blank VAT entries separately
-                if is_blank_vat:
+                # Track blank VAT entries separately (but not total lines)
+                if is_blank_vat and not is_total_line:
                     blank_vat_rows.append(transaction)
+                    continue
+                    
+                # If it's a total line, we don't process it as a normal transaction
+                if is_total_line:
                     continue
                     
                 # Skip rows with missing essential data or zero amount
