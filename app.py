@@ -148,13 +148,17 @@ def upload_excel():
                             # Check for specific text values
                             if not pd.isna(type_value):
                                 type_text = str(type_value).strip().lower()
-                                if type_text in ['1', 'yes', 'y', 'true', 's', 'service', 'other services', 'other service']:
+                                # Print for debugging
+                                print(f"Processing transaction type: '{type_text}'")
+                                if type_text in ['1', 'yes', 'y', 'true', 's', 'service', 'other services', 'other service', 'services']:
                                     transaction_type = 'S'  # Services
-                                elif type_text in ['l', 'goods', 'good', 'supply', 'supplies']:
+                                    print(f"Setting transaction type to S for '{type_text}'")
+                                elif type_text in ['0', 'no', 'n', 'false', 'l', 'goods', 'good', 'supply', 'supplies']:
                                     transaction_type = 'L'  # Goods/Supplies
+                                    print(f"Setting transaction type to L for '{type_text}'")
                         
-                        # Skip rows with missing essential data
-                        if not country_code or not vat_number or amount <= 0:
+                        # Skip rows with missing essential data (but allow negative amounts)
+                        if not country_code or not vat_number or amount == 0:
                             continue
                             
                         # Add transaction with additional customer info

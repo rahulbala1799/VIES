@@ -85,6 +85,12 @@ class ExcelProcessor:
                     mapping[standard_name] = col
                     break
         
+        # Attempt to find column F for Type if not already mapped
+        if 'transaction_type' not in mapping and len(self.data.columns) >= 6:
+            # Try to use column at position 5 (0-indexed, so 6th column or column F)
+            mapping['transaction_type'] = self.data.columns[5]
+            print(f"Using column F ({self.data.columns[5]}) for transaction type")
+        
         return mapping
     
     def extract_country_code(self, vat_number):
@@ -160,10 +166,6 @@ class ExcelProcessor:
                 if 'country_code' in column_map and not country_code:
                     country_code = str(row[column_map['country_code']]) if not pd.isna(row[column_map['country_code']]) else ''
                 
-                # Get amount
-                amount_col = column_map['amount']
-                amount = float(row[amount_col]) if not pd.isna(row[amount_col]) else 0
-                
                 # Determine transaction type
                 transaction_type = 'L'  # Default to Goods
                 if 'transaction_type' in column_map:
@@ -171,13 +173,36 @@ class ExcelProcessor:
                     # Check for specific text values
                     if not pd.isna(type_value):
                         type_text = str(type_value).strip().lower()
-                        if type_text in ['1', 'yes', 'y', 'true', 's', 'service', 'other services', 'other service']:
+                        # Print for debugging
+                        print(f"Processing transaction type: '{type_text}'")
+                        if type_text in ['1', 'yes', 'y', 'true', 's', 'service', 'other services', 'other service', 'services']:
                             transaction_type = 'S'  # Services
-                        elif type_text in ['l', 'goods', 'good', 'supply', 'supplies']:
+                            print(f"Setting transaction type to S for '{type_text}'")
+                        elif type_text in ['0', 'no', 'n', 'false', 'l', 'goods', 'good', 'supply', 'supplies']:
                             transaction_type = 'L'  # Goods/Supplies
+                            print(f"Setting transaction type to L for '{type_text}'")
                 
-                # Skip rows with missing essential data
-                if not country_code or not vat_number or amount <= 0:
+                # Get amount
+                amount_col = column_map['amount']
+                amount_val = row[amount_col]
+                
+                # Handle different number formats
+                if pd.isna(amount_val):
+                    amount = 0
+                else:
+                    # Try to convert to float, handling string representations
+                    try:
+                        amount = float(amount_val)
+                    except ValueError:
+                        # Try to handle comma as decimal separator
+                        try:
+                            amount = float(str(amount_val).replace(',', '.'))
+                        except:
+                            print(f"Skipping row with invalid amount: {amount_val}")
+                            continue
+                
+                # Skip rows with missing essential data (but allow negative amounts)
+                if not country_code or not vat_number or amount == 0:
                     continue
                     
                 # Add transaction
