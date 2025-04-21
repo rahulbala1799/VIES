@@ -120,30 +120,30 @@
                         </table>
                     </div>
                     
-                    {% if suspicious_vat_entries %}
-                    <!-- Suspicious VAT entries table -->
-                    <h3>Suspicious VAT Numbers (Review Required)</h3>
-                    <div class="transaction-table suspicious-vat-table">
-                        <table>
+                    <!-- Suspicious VAT IDs section -->
+                    {% if suspicious_vat_ids %}
+                    <div class="section">
+                        <h2>Suspicious VAT IDs</h2>
+                        <p>These VAT IDs require additional verification:</p>
+                        <table id="suspicious-vat-table">
                             <thead>
                                 <tr>
-                                    <th>Line Number</th>
-                                    <th>Customer</th>
+                                    <th>Country Code</th>
                                     <th>VAT Number</th>
-                                    <th>Issue</th>
-                                    <th>Amount (EUR)</th>
-                                    <th>Type</th>
+                                    <th>Line Number</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for entry in suspicious_vat_entries %}
-                                <tr class="suspicious-row">
-                                    <td>{{ entry.line_number }}</td>
-                                    <td>{{ entry.customer if entry.customer else "-" }}</td>
-                                    <td class="suspicious-data">{{ entry.country_code }}{{ entry.vat_number }}</td>
-                                    <td class="warning-reason">{{ entry.suspicion_reason }}</td>
-                                    <td class="amount">{{ entry.amount }}</td>
-                                    <td>{{ "Services" if entry.transaction_type == "S" else "Goods" }}</td>
+                                {% for vat in suspicious_vat_ids %}
+                                <tr id="vat-row-{{ loop.index0 }}" {% if vat.approved %}class="approved-vat"{% endif %}>
+                                    <td>{{ vat.country_code }}</td>
+                                    <td>{{ vat.vat_number }}</td>
+                                    <td>{{ vat.line_number }}</td>
+                                    <td class="action-cell">
+                                        <button class="btn-ok" onclick="markVatAsOk('{{ loop.index0 }}', '{{ vat.country_code }}{{ vat.vat_number }}')">OK</button>
+                                        <button class="btn-edit" onclick="openEditModal('{{ loop.index0 }}', '{{ vat.country_code }}', '{{ vat.vat_number }}', '{{ vat.line_number }}')">Edit</button>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -151,42 +151,30 @@
                     </div>
                     {% endif %}
                     
-                    {% if blank_vat_entries %}
-                    <!-- Blank VAT entries table -->
-                    <h3>Entries with Blank VAT Numbers (Not Included in Return)</h3>
-                    <div class="transaction-table blank-vat-table">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Line Number</th>
-                                    <th>Customer</th>
-                                    <th>VAT Number</th>
-                                    <th>Amount (EUR)</th>
-                                    <th>Type</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in blank_vat_entries %}
-                                <tr class="warning-row">
-                                    <td>{{ entry.line_number }}</td>
-                                    <td>{{ entry.customer if entry.customer else "-" }}</td>
-                                    <td class="missing-data">MISSING</td>
-                                    <td class="amount">{{ entry.amount }}</td>
-                                    <td>{{ "Services" if entry.transaction_type == "S" else "Goods" }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                    <!-- Add this before the closing body tag -->
+                    <!-- Edit VAT Modal -->
+                    <div id="edit-vat-modal" class="modal">
+                        <div class="modal-content">
+                            <h3>Edit VAT ID</h3>
+                            <div class="form-group">
+                                <label for="edit-country-code">Country Code (2 characters):</label>
+                                <input type="text" id="edit-country-code" maxlength="2">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-vat-number">VAT Number:</label>
+                                <input type="text" id="edit-vat-number">
+                            </div>
+                            <input type="hidden" id="edit-line-number">
+                            <input type="hidden" id="edit-index">
+                            <div class="form-actions">
+                                <button onclick="saveEditedVat()" class="btn-primary">Save</button>
+                                <button onclick="closeEditModal()" class="btn-secondary">Cancel</button>
+                            </div>
+                        </div>
                     </div>
-                    {% endif %}
-                    
-                    <div class="action-buttons">
-                        <a href="{{ url_for('index') }}" class="btn-secondary">Upload New File</a>
-                        <form action="{{ url_for('generate_vies_file') }}" method="post" class="inline-form">
-                            <input type="hidden" name="session_id" value="{{ session_id }}">
-                            <button type="submit" class="btn-download">Download VIES Return File</button>
-                        </form>
-                    </div>
+
+                    <!-- Toast notification container -->
+                    <div id="toast" style="display: none;"></div>
                 </div>
                 {% endif %}
             </div>

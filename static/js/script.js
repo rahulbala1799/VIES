@@ -104,4 +104,162 @@ function removeTransaction(button) {
     if (transactionEntry) {
         transactionEntry.remove();
     }
+}
+
+// VAT review functionality
+let approvedVats = [];
+
+/**
+ * Marks a suspicious VAT ID as approved
+ */
+function markVatAsOk(index, vatId) {
+    const row = document.getElementById(`vat-row-${index}`);
+    if (!row) return;
+    
+    // Add visual indication
+    row.classList.add('approved-vat');
+    
+    // Send approval to server
+    fetch('/approve_vat', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            vat_id: vatId,
+            session_id: getSessionId()
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('VAT ID approved successfully', 'success');
+        } else {
+            showToast('Error approving VAT ID: ' + data.error, 'error');
+            // Revert visual indication
+            row.classList.remove('approved-vat');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Network error while approving VAT ID', 'error');
+        // Revert visual indication
+        row.classList.remove('approved-vat');
+    });
+}
+
+/**
+ * Opens the edit modal for a VAT ID
+ */
+function openEditModal(index, countryCode, vatNumber, lineNumber) {
+    const modal = document.getElementById('edit-vat-modal');
+    const countryCodeInput = document.getElementById('edit-country-code');
+    const vatNumberInput = document.getElementById('edit-vat-number');
+    const lineNumberInput = document.getElementById('edit-line-number');
+    const indexInput = document.getElementById('edit-index');
+    
+    // Set current values
+    countryCodeInput.value = countryCode;
+    vatNumberInput.value = vatNumber;
+    lineNumberInput.value = lineNumber;
+    indexInput.value = index;
+    
+    // Show modal
+    modal.style.display = 'block';
+}
+
+/**
+ * Closes the edit modal
+ */
+function closeEditModal() {
+    const modal = document.getElementById('edit-vat-modal');
+    modal.style.display = 'none';
+}
+
+/**
+ * Saves the edited VAT ID
+ */
+function saveEditedVat() {
+    const countryCode = document.getElementById('edit-country-code').value.trim().toUpperCase();
+    const vatNumber = document.getElementById('edit-vat-number').value.trim();
+    const lineNumber = document.getElementById('edit-line-number').value;
+    const index = document.getElementById('edit-index').value;
+    
+    // Basic validation
+    if (!countryCode || countryCode.length !== 2) {
+        showToast('Country code must be exactly 2 characters', 'error');
+        return;
+    }
+    
+    if (!vatNumber) {
+        showToast('VAT number cannot be empty', 'error');
+        return;
+    }
+    
+    // Send to server
+    fetch('/edit_vat', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            index: index,
+            country_code: countryCode,
+            vat_number: vatNumber,
+            line_number: lineNumber,
+            session_id: getSessionId()
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('VAT ID updated successfully', 'success');
+            closeEditModal();
+            
+            // Update the table row with new values
+            const row = document.getElementById(`vat-row-${index}`);
+            if (row) {
+                row.children[0].textContent = countryCode;
+                row.children[1].textContent = vatNumber;
+            }
+        } else {
+            showToast('Error updating VAT ID: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Network error while updating VAT ID', 'error');
+    });
+}
+
+/**
+ * Show toast notification
+ */
+function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = `toast ${type}`;
+    toast.style.display = 'block';
+    
+    // Hide after 3 seconds
+    setTimeout(() => {
+        toast.style.display = 'none';
+    }, 3000);
+}
+
+/**
+ * Get or create session ID
+ */
+function getSessionId() {
+    // Get session ID from a hidden input or generate a random one if needed
+    let sessionId = document.querySelector('input[name="session_id"]');
+    return sessionId ? sessionId.value : Date.now().toString();
+}
+
+// Close the modal when clicking outside of it
+window.onclick = function(event) {
+    const modal = document.getElementById('edit-vat-modal');
+    if (event.target == modal) {
+        closeEditModal();
+    }
 } 

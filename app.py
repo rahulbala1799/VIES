@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, jsonify
 import os
 import tempfile
 import uuid
@@ -20,6 +20,10 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Max file size: 16MB
 
 # Session storage for uploaded data
 UPLOADS = {}
+# Storage for approved VAT IDs
+APPROVED_VATS = defaultdict(list)
+# Storage for edited VAT entries
+EDITED_VATS = defaultdict(dict)
 
 def combine_duplicate_transactions(transactions):
     """
@@ -186,6 +190,69 @@ def generate_vies_file():
         print(f"File generation error: {error_details}")
         flash(f'Error generating VIES file: {str(e)}', 'error')
         return redirect(url_for('index'))
+
+@app.route('/approve_vat', methods=['POST'])
+def approve_vat():
+    """Mark a suspicious VAT ID as approved"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'})
+        
+        vat_id = data.get('vat_id')
+        session_id = data.get('session_id')
+        
+        if not vat_id or not session_id:
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+            
+        # Add to approved VATs list for this session
+        if vat_id not in APPROVED_VATS[session_id]:
+            APPROVED_VATS[session_id].append(vat_id)
+        
+        return jsonify({'success': True})
+    
+    except Exception as e:
+        print(f"Error approving VAT: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/edit_vat', methods=['POST'])
+def edit_vat():
+    """Edit a suspicious VAT ID"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'})
+        
+        index = data.get('index')
+        country_code = data.get('country_code')
+        vat_number = data.get('vat_number')
+        line_number = data.get('line_number')
+        session_id = data.get('session_id')
+        
+        if not all([index, country_code, vat_number, session_id]):
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        # Basic validation
+        if len(country_code) != 2:
+            return jsonify({'success': False, 'error': 'Country code must be exactly 2 characters'})
+            
+        # Store edited vat information
+        EDITED_VATS[session_id][index] = {
+            'country_code': country_code.upper(),
+            'vat_number': vat_number,
+            'line_number': line_number
+        }
+        
+        # If we have the generator in memory, update the transaction
+        if session_id in UPLOADS:
+            generator = UPLOADS[session_id]
+            generator.update_vat_id(line_number, country_code.upper(), vat_number)
+        
+        return jsonify({'success': True})
+    
+    except Exception as e:
+        print(f"Error editing VAT: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=os.getenv("FLASK_DEBUG", "True") == "True", 
