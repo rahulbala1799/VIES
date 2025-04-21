@@ -385,9 +385,13 @@ def generate_pdf():
         
         # Create a PDF file
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        # Add proper margins to ensure content fits and doesn't get cut off
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
         styles = getSampleStyleSheet()
         elements = []
+        
+        # Calculate available width for tables (A4 width - margins)
+        available_width = doc.width
         
         # Add title
         title_style = styles['Heading1']
@@ -419,7 +423,8 @@ def generate_pdf():
                 ['Difference', reconciliation.get('difference', '€0.00')]
             ]
             
-            recon_table = Table(recon_data, colWidths=[300, 150])
+            # Adjust column widths to fit within page width
+            recon_table = Table(recon_data, colWidths=[available_width * 0.7, available_width * 0.3])
             recon_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (1, 0), colors.lightgrey),
                 ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
@@ -467,14 +472,26 @@ def generate_pdf():
                     t.get('type', '')
                 ])
             
-            trans_table = Table(trans_data, repeatRows=1)
+            # Calculate relative column widths based on content
+            col_widths = [
+                available_width * 0.15,  # Line Numbers
+                available_width * 0.30,  # Customer
+                available_width * 0.25,  # VAT Number
+                available_width * 0.15,  # Amount
+                available_width * 0.15   # Type
+            ]
+            
+            trans_table = Table(trans_data, repeatRows=1, colWidths=col_widths)
             trans_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
                 ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),  # Smaller font size for better fit
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('ALIGN', (3, 1), (3, -1), 'RIGHT'),  # Right-align amount column
+                ('WORDWRAP', (0, 0), (-1, -1), True),  # Enable word wrapping
             ]))
             elements.append(trans_table)
         
@@ -497,14 +514,24 @@ def generate_pdf():
                     status
                 ])
             
-            sus_table = Table(sus_data, repeatRows=1)
+            # Set column widths for suspicious VAT table
+            sus_col_widths = [
+                available_width * 0.2,   # Country Code
+                available_width * 0.4,   # VAT Number
+                available_width * 0.2,   # Line Number
+                available_width * 0.2    # Status
+            ]
+            
+            sus_table = Table(sus_data, repeatRows=1, colWidths=sus_col_widths)
             sus_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
                 ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),  # Slightly smaller font
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('WORDWRAP', (0, 0), (-1, -1), True),  # Enable word wrapping
             ]))
             elements.append(sus_table)
         
