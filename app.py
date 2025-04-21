@@ -95,169 +95,42 @@ def upload_excel():
             # Process the Excel file
             excel_processor = ExcelProcessor(file_content=file_content)
             
-            # Explicitly test loading the data
-            if not excel_processor.load_data():
-                flash('Failed to load Excel file. Please ensure it is a valid Excel file.', 'error')
+            # Process data with the new method
+            data, errors, warnings, metrics = excel_processor.process_data()
+            
+            if data is None or errors:
+                for error in errors:
+                    flash(error, 'error')
                 return redirect(url_for('index'))
                 
-            # Continue with processing
-            column_map = excel_processor.map_columns()
-            
-            # Check if we have the necessary columns
-            if 'amount' not in column_map:
-                flash('Required "Value of Supplies" column not found in the Excel file.', 'error')
-                return redirect(url_for('index'))
-            
-            # Use dummy company info - will be populated from the Excel if available
-            company_name = "Company from Excel"
-            tax_number = "Tax Number from Excel"
+            # Show warnings if any
+            for warning in warnings:
+                flash(warning, 'warning')
             
             # Use current month and year for reporting period
             import datetime
             now = datetime.datetime.now()
             reporting_period = f"{now.year}-{now.month:02d}"
             
-            # Try to extract company info from Excel if available
-            if excel_processor.data is not None:
-                if 'customer' in column_map:
-                    # Use first customer as company name if none provided
-                    try:
-                        first_row = excel_processor.data.iloc[0]
-                        potential_name = first_row[column_map['customer']]
-                        if not pd.isna(potential_name):
-                            company_name = potential_name
-                    except Exception as e:
-                        # If there's an error, just use default
-                        pass
+            # Create generator for the VIES file export
+            company_name = "Company from Excel"
+            tax_number = "Tax Number from Excel"
+            generator = excel_processor.create_generator(company_name, tax_number, reporting_period, data)
             
-            # Create generator with dummy data - we only need it for transactions
-            generator = VIESGenerator(company_name, tax_number, reporting_period)
-            
-            # Process each row to extract transactions
-            if excel_processor.data is not None:
-                for _, row in excel_processor.data.iterrows():
-                    try:
-                        # Get values, handle missing columns gracefully
-                        country_code = ''
-                        vat_number = ''
-                        customer = ''
-                        
-                        # Get customer name if available
-                        if 'customer' in column_map:
-                            customer = str(row[column_map['customer']]) if not pd.isna(row[column_map['customer']]) else ''
-                        
-                        # Get VAT number and extract country code if needed
-                        if 'vat_number' in column_map:
-                            vat = str(row[column_map['vat_number']]) if not pd.isna(row[column_map['vat_number']]) else ''
-                            extracted_cc, extracted_vat = excel_processor.extract_country_code(vat)
-                            vat_number = extracted_vat
-                            
-                            if extracted_cc and not country_code:
-                                country_code = extracted_cc
-                        
-                        # Get country code from dedicated column if available
-                        if 'country_code' in column_map and not country_code:
-                            country_code = str(row[column_map['country_code']]) if not pd.isna(row[column_map['country_code']]) else ''
-                        
-                        # Get amount
-                        if 'amount' in column_map:
-                            amount_col = column_map['amount']
-                            amount_val = row[amount_col]
-                            
-                            # Handle different number formats
-                            if pd.isna(amount_val):
-                                amount = 0
-                            else:
-                                # Try to convert to float, handling string representations like "1,000.00"
-                                try:
-                                    amount = float(amount_val)
-                                except ValueError:
-                                    # Try to handle comma as decimal separator
-                                    try:
-                                        amount = float(str(amount_val).replace(',', '.'))
-                                    except:
-                                        # If all conversion attempts fail, skip this row
-                                        print(f"Skipping row with invalid amount: {amount_val}")
-                                        continue
-                        else:
-                            continue  # Skip if no amount column
-                        
-                        # Determine transaction type
-                        transaction_type = 'L'  # Default to Goods
-                        if 'transaction_type' in column_map:
-                            type_value = row[column_map['transaction_type']]
-                            # Check for specific text values
-                            if not pd.isna(type_value):
-                                type_text = str(type_value).strip().lower()
-                                # Print for debugging
-                                print(f"Processing transaction type: '{type_text}'")
-                                if type_text in ['1', 'yes', 'y', 'true', 's', 'service', 'other services', 'other service', 'services']:
-                                    transaction_type = 'S'  # Services
-                                    print(f"Setting transaction type to S for '{type_text}'")
-                                elif type_text in ['0', 'no', 'n', 'false', 'l', 'goods', 'good', 'supply', 'supplies']:
-                                    transaction_type = 'L'  # Goods/Supplies
-                                    print(f"Setting transaction type to L for '{type_text}'")
-                        
-                        # Skip rows with missing essential data (but allow negative amounts)
-                        if not country_code or not vat_number or amount == 0:
-                            continue
-                            
-                        # Add transaction with additional customer info
-                        transaction = {
-                            'country_code': country_code.upper(),
-                            'vat_number': vat_number.replace(' ', ''),
-                            'amount': round(float(amount), 2),
-                            'transaction_type': transaction_type.upper(),
-                            'customer': customer
-                        }
-                        generator.transactions.append(transaction)
-                        
-                    except Exception as e:
-                        print(f"Error processing row: {str(e)}")
-                        continue
-            
-            # Check if we have any transactions
-            if not generator.transactions:
-                flash('No valid transactions found in the Excel file. Please check your data format.', 'error')
-                return redirect(url_for('index'))
-            
-            # Combine duplicate transactions
-            original_transactions, combined_transactions = combine_duplicate_transactions(generator.transactions)
-            
-            # Save the original transaction count
-            original_count = len(original_transactions)
-            combined_count = len(combined_transactions)
-            
-            # Replace transactions with the combined ones
-            generator.transactions = []  # Clear existing transactions
-            for transaction in combined_transactions:
-                # Add back to generator using the proper method
-                generator.add_transaction(
-                    transaction['country_code'],
-                    transaction['vat_number'],
-                    transaction['amount'],
-                    transaction['transaction_type']
-                )
-                # Add the customer field back (not part of add_transaction method)
-                if 'customer' in transaction:
-                    generator.transactions[-1]['customer'] = transaction['customer']
-                
             # Store in session for later generation
             session_id = str(uuid.uuid4())
             UPLOADS[session_id] = generator
             
-            # Calculate total amount
-            total_amount = sum(transaction['amount'] for transaction in generator.transactions)
-            
-            flash(f'Successfully processed {original_count} transactions from the Excel file.', 'success')
+            # Display success message with metrics
+            flash(f'Successfully processed {metrics["total_rows"]} rows with {metrics["combined_transactions"]} unique VAT IDs.', 'success')
             
             return render_template(
                 'index.html', 
-                transactions=generator.transactions,
-                total_amount=f"{total_amount:.2f}",
-                session_id=session_id,
-                original_count=original_count,
-                combined_count=combined_count
+                transactions=data['aggregated_transactions'],
+                blank_vat_entries=data['blank_vat_entries'],
+                metrics=metrics,
+                total_amount=f"{metrics['total_amount']:.2f}",
+                session_id=session_id
             )
             
         except Exception as e:

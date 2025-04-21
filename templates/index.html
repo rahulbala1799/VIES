@@ -24,16 +24,17 @@
             {% endwith %}
             
             <div class="form-container">
+                {% if not transactions %}
                 <div class="info-panel">
                     <h3>Excel Format Information</h3>
                     <p>Your Excel file should contain the following columns:</p>
                     <ul>
-                        <li><strong>Customer/Company Name</strong></li>
+                        <li><strong>Line</strong> (Line/row number)</li>
+                        <li><strong>Customer</strong> (Customer number/ID)</li>
                         <li><strong>Country Indicator</strong> (2-letter country code)</li>
                         <li><strong>Customer's VAT Number</strong> (without country code)</li>
                         <li><strong>Value of Supplies EUR</strong> (numeric amount)</li>
-                        <li><strong>Other services</strong> (enter 1 for services, leave empty for goods)</li>
-                        <li><strong>Triangular transactions</strong> (optional)</li>
+                        <li><strong>Other services</strong> ("Other Services" for services, "Supply" or "Goods" for goods)</li>
                     </ul>
                     <p>Column names don't need to exactly match. The system will attempt to identify the correct columns.</p>
                 </div>
@@ -50,37 +51,42 @@
                     
                     <button type="submit" class="btn-submit">Generate VIES Return</button>
                 </form>
-                
-                {% if transactions %}
+                {% else %}
                 <div class="results-section">
-                    {% if original_count and combined_count %}
-                    <h3>Transaction Summary</h3>
-                    <div class="summary-table">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Total Transactions Before Combining</th>
-                                    <th>Total Transactions After Combining</th>
-                                    <th>Total Value (EUR)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>{{ original_count }}</td>
-                                    <td>{{ combined_count }}</td>
-                                    <td>{{ total_amount }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    {% endif %}
+                    <h2>VIES Return Dashboard</h2>
                     
-                    <h3>Uploaded File Contents (Combined Duplicates)</h3>
+                    <!-- Top Metrics Dashboard -->
+                    <div class="dashboard">
+                        <div class="dashboard-card">
+                            <div class="card-label">Total Rows</div>
+                            <div class="card-value">{{ metrics.total_rows }}</div>
+                        </div>
+                        <div class="dashboard-card">
+                            <div class="card-label">Valid Transactions</div>
+                            <div class="card-value">{{ metrics.valid_transactions }}</div>
+                        </div>
+                        <div class="dashboard-card">
+                            <div class="card-label">Unique VAT IDs</div>
+                            <div class="card-value">{{ metrics.combined_transactions }}</div>
+                        </div>
+                        <div class="dashboard-card highlight">
+                            <div class="card-label">Total Amount</div>
+                            <div class="card-value">€{{ total_amount }}</div>
+                        </div>
+                        <div class="dashboard-card warning">
+                            <div class="card-label">Blank VAT Entries</div>
+                            <div class="card-value">{{ metrics.blank_vat_entries }}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Processed Transactions Table -->
+                    <h3>Processed Transactions (Aggregated by VAT ID)</h3>
                     <div class="transaction-table">
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Customer</th>
+                                    <th>Line Numbers</th>
+                                    <th>Customer Numbers</th>
                                     <th>Country Code</th>
                                     <th>VAT Number</th>
                                     <th>Amount (EUR)</th>
@@ -89,8 +95,14 @@
                             </thead>
                             <tbody>
                                 {% for transaction in transactions %}
-                                <tr>
-                                    <td>{{ transaction.customer if transaction.customer else "-" }}</td>
+                                <tr class="{% if transaction.multiple_customers %}multiple-customer{% endif %}">
+                                    <td>{{ transaction.line_numbers }}</td>
+                                    <td>
+                                        {{ transaction.customer }}
+                                        {% if transaction.multiple_customers %}
+                                        <span class="note">Multiple customer numbers</span>
+                                        {% endif %}
+                                    </td>
                                     <td>{{ transaction.country_code }}</td>
                                     <td>{{ transaction.vat_number }}</td>
                                     <td class="amount">{{ transaction.amount }}</td>
@@ -101,15 +113,44 @@
                         </table>
                     </div>
                     
-                    <div class="summary">
-                        <p><strong>Total Transactions:</strong> {{ transactions|length }}</p>
-                        <p><strong>Total Amount:</strong> {{ total_amount }} EUR</p>
+                    {% if blank_vat_entries %}
+                    <!-- Blank VAT entries table -->
+                    <h3>Entries with Blank VAT Numbers (Not Included in Return)</h3>
+                    <div class="transaction-table blank-vat-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Line Number</th>
+                                    <th>Customer</th>
+                                    <th>Country Code</th>
+                                    <th>VAT Number</th>
+                                    <th>Amount (EUR)</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in blank_vat_entries %}
+                                <tr class="warning-row">
+                                    <td>{{ entry.line_number }}</td>
+                                    <td>{{ entry.customer if entry.customer else "-" }}</td>
+                                    <td>{{ entry.country_code }}</td>
+                                    <td class="missing-data">MISSING</td>
+                                    <td class="amount">{{ entry.amount }}</td>
+                                    <td>{{ "Services" if entry.transaction_type == "S" else "Goods" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
+                    {% endif %}
                     
-                    <form action="{{ url_for('generate_vies_file') }}" method="post">
-                        <input type="hidden" name="session_id" value="{{ session_id }}">
-                        <button type="submit" class="btn-download">Download VIES Return File</button>
-                    </form>
+                    <div class="action-buttons">
+                        <a href="{{ url_for('index') }}" class="btn-secondary">Upload New File</a>
+                        <form action="{{ url_for('generate_vies_file') }}" method="post" class="inline-form">
+                            <input type="hidden" name="session_id" value="{{ session_id }}">
+                            <button type="submit" class="btn-download">Download VIES Return File</button>
+                        </form>
+                    </div>
                 </div>
                 {% endif %}
             </div>

@@ -6,6 +6,7 @@ import re
 import os
 from io import BytesIO
 from .generator import VIESGenerator
+from collections import defaultdict
 
 class ExcelProcessor:
     """Process Excel files containing VIES transaction data."""
@@ -21,6 +22,9 @@ class ExcelProcessor:
         self.file_path = file_path
         self.file_content = file_content
         self.data = None
+        self.errors = []
+        self.warnings = []
+        self.blank_vat_entries = []
         
     def load_data(self):
         """
@@ -57,6 +61,7 @@ class ExcelProcessor:
             
             return True
         except Exception as e:
+            self.errors.append(f"Error loading Excel file: {str(e)}")
             print(f"Error loading Excel file: {str(e)}")
             return False
             
@@ -69,12 +74,12 @@ class ExcelProcessor:
         """
         # Define possible column names for each field
         column_mapping = {
-            'customer': ['customer', 'name', 'customer name', 'company', 'company name', 'client'],
+            'line': ['line', 'line number', 'row', 'row number', '#'],
+            'customer': ['customer', 'customer number', 'customer no', 'customer id', 'customer code', 'client number'],
             'country_code': ['country', 'country code', 'country indicator', 'country_indicator'],
             'vat_number': ['vat', 'vat number', 'vat no', 'customer\'s vat number', 'customer vat'],
             'amount': ['amount', 'value', 'eur', 'euro', 'value of supplies', 'value of supplies eur'],
-            'transaction_type': ['type', 'transaction type', 'service type', 'other services'],
-            'triangular': ['triangular', 'triangular transaction', 'triangular transactions']
+            'transaction_type': ['type', 'transaction type', 'service type', 'other services']
         }
         
         mapping = {}
@@ -85,11 +90,30 @@ class ExcelProcessor:
                     mapping[standard_name] = col
                     break
         
-        # Attempt to find column F for Type if not already mapped
-        if 'transaction_type' not in mapping and len(self.data.columns) >= 6:
-            # Try to use column at position 5 (0-indexed, so 6th column or column F)
-            mapping['transaction_type'] = self.data.columns[5]
-            print(f"Using column F ({self.data.columns[5]}) for transaction type")
+        # Expected columns 
+        expected_cols = ['line', 'customer', 'country_code', 'vat_number', 'amount', 'transaction_type']
+        missing_cols = [col for col in expected_cols if col not in mapping]
+        
+        if missing_cols:
+            self.warnings.append(f"Missing expected columns: {', '.join(missing_cols)}")
+            print(f"Warning: Missing expected columns: {', '.join(missing_cols)}")
+            
+            # Try to intelligently map columns by position if names don't match
+            if len(self.data.columns) >= 6:  # We need at least 6 columns
+                # Map the first 6 columns directly to expected fields
+                col_positions = {
+                    0: 'line',
+                    1: 'customer',
+                    2: 'country_code', 
+                    3: 'vat_number',
+                    4: 'amount',
+                    5: 'transaction_type'
+                }
+                
+                for pos, standard_name in col_positions.items():
+                    if pos < len(self.data.columns) and standard_name not in mapping:
+                        mapping[standard_name] = self.data.columns[pos]
+                        print(f"Auto-mapped {standard_name} to column {pos+1}: {self.data.columns[pos]}")
         
         return mapping
     
@@ -118,40 +142,70 @@ class ExcelProcessor:
         
         return ('', vat_number)
     
-    def process_to_generator(self, company_name, tax_number, reporting_period):
+    def process_data(self):
         """
-        Process the Excel data and create a VIES generator.
+        Process the Excel data and create aggregated transactions.
         
-        Args:
-            company_name (str): Company name
-            tax_number (str): Company tax number
-            reporting_period (str): Reporting period in YYYY-MM format
-            
         Returns:
-            VIESGenerator: Generator with transactions from Excel
+            tuple: (processed_data, errors, warnings, metrics)
+                processed_data: dict with transaction data
+                errors: list of error messages
+                warnings: list of warning messages
+                metrics: dict with processing metrics
         """
         if not self.load_data():
-            raise ValueError("Could not load Excel data")
+            self.errors.append("Could not load Excel data")
+            return None, self.errors, self.warnings, {}
             
         # Create mapping for columns
         column_map = self.map_columns()
         
         # Check if we have the minimum required columns
-        required_fields = ['amount']
+        required_fields = ['amount', 'vat_number']
         missing_fields = [field for field in required_fields if field not in column_map]
         
         if missing_fields:
-            raise ValueError(f"Missing required columns: {', '.join(missing_fields)}")
-            
-        # Create generator
-        generator = VIESGenerator(company_name, tax_number, reporting_period)
+            self.errors.append(f"Missing required columns: {', '.join(missing_fields)}")
+            return None, self.errors, self.warnings, {}
         
-        # Process each row
-        for _, row in self.data.iterrows():
+        # Process each row and extract data
+        total_rows = 0
+        valid_transactions = []
+        blank_vat_rows = []
+        invalid_rows = []
+        total_amount = 0
+        
+        # Dictionary to store aggregated data by VAT ID
+        aggregated_by_vat = defaultdict(lambda: {
+            'country_code': '',
+            'vat_number': '',
+            'customer_numbers': set(),
+            'amount': 0,
+            'transaction_type': '',
+            'line_numbers': set(),
+            'is_valid': True
+        })
+        
+        for i, row in self.data.iterrows():
+            total_rows += 1
             try:
+                line_number = f"{i+1}" # 1-indexed line number
+                if 'line' in column_map:
+                    try:
+                        line_val = row[column_map['line']]
+                        if not pd.isna(line_val):
+                            line_number = str(line_val)
+                    except:
+                        pass
+                
                 # Get values, handle missing columns gracefully
                 country_code = ''
                 vat_number = ''
+                customer = ''
+                
+                # Get customer name if available
+                if 'customer' in column_map:
+                    customer = str(row[column_map['customer']]) if not pd.isna(row[column_map['customer']]) else ''
                 
                 # Get VAT number and extract country code if needed
                 if 'vat_number' in column_map:
@@ -166,6 +220,27 @@ class ExcelProcessor:
                 if 'country_code' in column_map and not country_code:
                     country_code = str(row[column_map['country_code']]) if not pd.isna(row[column_map['country_code']]) else ''
                 
+                # Get amount
+                amount = 0
+                if 'amount' in column_map:
+                    amount_col = column_map['amount']
+                    amount_val = row[amount_col]
+                    
+                    # Handle different number formats
+                    if pd.isna(amount_val):
+                        amount = 0
+                    else:
+                        # Try to convert to float, handling string representations
+                        try:
+                            amount = float(amount_val)
+                        except ValueError:
+                            # Try to handle comma as decimal separator
+                            try:
+                                amount = float(str(amount_val).replace(',', '.'))
+                            except:
+                                self.warnings.append(f"Invalid amount in row {line_number}: {amount_val}")
+                                continue
+                
                 # Determine transaction type
                 transaction_type = 'L'  # Default to Goods
                 if 'transaction_type' in column_map:
@@ -173,7 +248,6 @@ class ExcelProcessor:
                     # Check for specific text values
                     if not pd.isna(type_value):
                         type_text = str(type_value).strip().lower()
-                        # Print for debugging
                         print(f"Processing transaction type: '{type_text}'")
                         if type_text in ['1', 'yes', 'y', 'true', 's', 'service', 'other services', 'other service', 'services']:
                             transaction_type = 'S'  # Services
@@ -182,34 +256,127 @@ class ExcelProcessor:
                             transaction_type = 'L'  # Goods/Supplies
                             print(f"Setting transaction type to L for '{type_text}'")
                 
-                # Get amount
-                amount_col = column_map['amount']
-                amount_val = row[amount_col]
+                # Check for blank VAT
+                is_blank_vat = not vat_number or vat_number.strip() == ''
                 
-                # Handle different number formats
-                if pd.isna(amount_val):
-                    amount = 0
-                else:
-                    # Try to convert to float, handling string representations
-                    try:
-                        amount = float(amount_val)
-                    except ValueError:
-                        # Try to handle comma as decimal separator
-                        try:
-                            amount = float(str(amount_val).replace(',', '.'))
-                        except:
-                            print(f"Skipping row with invalid amount: {amount_val}")
-                            continue
+                # Add to transactions with validation
+                transaction = {
+                    'line_number': line_number,
+                    'customer': customer,
+                    'country_code': country_code.upper(),
+                    'vat_number': vat_number.replace(' ', ''),
+                    'amount': amount,
+                    'transaction_type': transaction_type.upper(),
+                    'is_blank_vat': is_blank_vat
+                }
                 
-                # Skip rows with missing essential data (but allow negative amounts)
-                if not country_code or not vat_number or amount == 0:
+                # Track blank VAT entries separately
+                if is_blank_vat:
+                    blank_vat_rows.append(transaction)
                     continue
                     
-                # Add transaction
-                generator.add_transaction(country_code, vat_number, amount, transaction_type)
+                # Skip rows with missing essential data or zero amount
+                if not country_code or amount == 0:
+                    invalid_rows.append({
+                        'line_number': line_number,
+                        'reason': "Missing country code or zero amount"
+                    })
+                    continue
                 
+                # Add to valid transactions
+                valid_transactions.append(transaction)
+                total_amount += amount
+                
+                # Add to aggregated data
+                vat_key = f"{country_code}:{vat_number}"
+                aggregated_by_vat[vat_key]['country_code'] = country_code
+                aggregated_by_vat[vat_key]['vat_number'] = vat_number
+                aggregated_by_vat[vat_key]['customer_numbers'].add(customer)
+                aggregated_by_vat[vat_key]['amount'] += amount
+                aggregated_by_vat[vat_key]['line_numbers'].add(line_number)
+                
+                # For transaction type, prefer Services (S) if any transaction is services
+                if transaction_type == 'S':
+                    aggregated_by_vat[vat_key]['transaction_type'] = 'S'
+                elif not aggregated_by_vat[vat_key]['transaction_type']:
+                    aggregated_by_vat[vat_key]['transaction_type'] = transaction_type
+                    
             except Exception as e:
-                print(f"Error processing row: {str(e)}")
+                self.errors.append(f"Error processing row {i+1}: {str(e)}")
                 continue
-                
+        
+        # Convert to list for easier handling
+        aggregated_transactions = []
+        for vat_key, data in aggregated_by_vat.items():
+            customer_note = ", ".join(sorted([c for c in data['customer_numbers'] if c]))
+            transaction = {
+                'country_code': data['country_code'],
+                'vat_number': data['vat_number'],
+                'amount': round(data['amount'], 2),
+                'transaction_type': data['transaction_type'],
+                'customer': customer_note,
+                'line_numbers': ", ".join(sorted(data['line_numbers'])),
+                'multiple_customers': len(data['customer_numbers']) > 1,
+                'is_blank_vat': False
+            }
+            aggregated_transactions.append(transaction)
+            
+        # Store blank VAT entries for display
+        self.blank_vat_entries = blank_vat_rows
+            
+        # Create metrics
+        metrics = {
+            'total_rows': total_rows,
+            'valid_transactions': len(valid_transactions),
+            'blank_vat_entries': len(blank_vat_rows),
+            'invalid_rows': len(invalid_rows),
+            'combined_transactions': len(aggregated_transactions),
+            'total_amount': round(total_amount, 2)
+        }
+        
+        return {
+            'original_transactions': valid_transactions,
+            'aggregated_transactions': aggregated_transactions,
+            'blank_vat_entries': blank_vat_rows,
+            'invalid_rows': invalid_rows
+        }, self.errors, self.warnings, metrics
+        
+    def create_generator(self, company_name, tax_number, reporting_period, data=None):
+        """
+        Create a VIES generator from the processed data.
+        
+        Args:
+            company_name (str): Company name
+            tax_number (str): Company tax number
+            reporting_period (str): Reporting period in YYYY-MM format
+            data (dict, optional): Pre-processed data
+            
+        Returns:
+            VIESGenerator: Generator with transactions
+        """
+        if data is None:
+            data, _, _, _ = self.process_data()
+            if data is None:
+                raise ValueError("Could not process data")
+        
+        # Create generator
+        generator = VIESGenerator(company_name, tax_number, reporting_period)
+        
+        # Add transactions to generator
+        for transaction in data['aggregated_transactions']:
+            generator.add_transaction(
+                transaction['country_code'],
+                transaction['vat_number'],
+                transaction['amount'],
+                transaction['transaction_type']
+            )
+            
+            # Add additional fields that the generator doesn't handle natively
+            if 'customer' in transaction:
+                generator.transactions[-1]['customer'] = transaction['customer']
+            if 'line_numbers' in transaction:
+                generator.transactions[-1]['line_numbers'] = transaction['line_numbers']
+            if 'multiple_customers' in transaction:
+                generator.transactions[-1]['multiple_customers'] = transaction['multiple_customers']
+        
         return generator 
