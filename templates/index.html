@@ -53,7 +53,29 @@
                 
                 {% if transactions %}
                 <div class="results-section">
-                    <h3>Uploaded File Contents</h3>
+                    {% if original_count and combined_count %}
+                    <h3>Transaction Summary</h3>
+                    <div class="summary-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Total Transactions Before Combining</th>
+                                    <th>Total Transactions After Combining</th>
+                                    <th>Total Value (EUR)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>{{ original_count }}</td>
+                                    <td>{{ combined_count }}</td>
+                                    <td>{{ total_amount }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                    
+                    <h3>Uploaded File Contents (Combined Duplicates)</h3>
                     <div class="transaction-table">
                         <table>
                             <thead>

@@ -8,6 +8,7 @@ from vies_generator.generator import VIESGenerator
 from vies_generator.excel_processor import ExcelProcessor
 import pandas as pd
 import traceback
+from collections import defaultdict
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +20,46 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Max file size: 16MB
 
 # Session storage for uploaded data
 UPLOADS = {}
+
+def combine_duplicate_transactions(transactions):
+    """
+    Combine transactions with the same VAT ID and transaction type.
+    
+    Args:
+        transactions (list): List of transaction dictionaries
+        
+    Returns:
+        tuple: (original_transactions, combined_transactions)
+    """
+    # Store original transactions
+    original_transactions = transactions.copy()
+    
+    # Create a dictionary to group transactions by VAT ID and type
+    grouped = defaultdict(list)
+    
+    for transaction in transactions:
+        # Create a key based on VAT ID and transaction type
+        key = (transaction['country_code'], transaction['vat_number'], transaction['transaction_type'])
+        grouped[key].append(transaction)
+    
+    # Combine transactions in each group
+    combined_transactions = []
+    for key, group in grouped.items():
+        if len(group) > 1:
+            # Combine transactions
+            combined = {
+                'country_code': key[0],
+                'vat_number': key[1],
+                'transaction_type': key[2],
+                'amount': sum(t['amount'] for t in group),
+                'customer': ', '.join(set(t['customer'] for t in group if t.get('customer'))) or group[0].get('customer', '')
+            }
+            combined_transactions.append(combined)
+        else:
+            # Just add the single transaction
+            combined_transactions.append(group[0])
+    
+    return original_transactions, combined_transactions
 
 @app.route('/')
 def index():
@@ -179,6 +220,27 @@ def upload_excel():
             if not generator.transactions:
                 flash('No valid transactions found in the Excel file. Please check your data format.', 'error')
                 return redirect(url_for('index'))
+            
+            # Combine duplicate transactions
+            original_transactions, combined_transactions = combine_duplicate_transactions(generator.transactions)
+            
+            # Save the original transaction count
+            original_count = len(original_transactions)
+            combined_count = len(combined_transactions)
+            
+            # Replace transactions with the combined ones
+            generator.transactions = []  # Clear existing transactions
+            for transaction in combined_transactions:
+                # Add back to generator using the proper method
+                generator.add_transaction(
+                    transaction['country_code'],
+                    transaction['vat_number'],
+                    transaction['amount'],
+                    transaction['transaction_type']
+                )
+                # Add the customer field back (not part of add_transaction method)
+                if 'customer' in transaction:
+                    generator.transactions[-1]['customer'] = transaction['customer']
                 
             # Store in session for later generation
             session_id = str(uuid.uuid4())
@@ -187,13 +249,15 @@ def upload_excel():
             # Calculate total amount
             total_amount = sum(transaction['amount'] for transaction in generator.transactions)
             
-            flash(f'Successfully processed {len(generator.transactions)} transactions from the Excel file.', 'success')
+            flash(f'Successfully processed {original_count} transactions from the Excel file.', 'success')
             
             return render_template(
                 'index.html', 
                 transactions=generator.transactions,
                 total_amount=f"{total_amount:.2f}",
-                session_id=session_id
+                session_id=session_id,
+                original_count=original_count,
+                combined_count=combined_count
             )
             
         except Exception as e:

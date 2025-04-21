@@ -320,4 +320,31 @@ footer {
     margin-top: 2rem;
     padding: 1rem 0;
     color: #666;
+}
+
+.summary-table {
+    overflow-x: auto;
+    margin-bottom: 2rem;
+    border: 1px solid #005f73;
+    border-radius: 4px;
+}
+
+.summary-table table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+}
+
+.summary-table th {
+    background-color: #005f73;
+    color: white;
+    text-align: center;
+    padding: 12px;
+}
+
+.summary-table td {
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+    padding: 15px 10px;
 } 
