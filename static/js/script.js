@@ -262,4 +262,62 @@ window.onclick = function(event) {
     if (event.target == modal) {
         closeEditModal();
     }
+}
+
+// Quarterly verification functions
+document.addEventListener('DOMContentLoaded', function() {
+    // Set up event listeners for quarterly verification
+    const verifyButton = document.getElementById('verify-totals');
+    if (verifyButton) {
+        verifyButton.addEventListener('click', verifyQuarterlyTotals);
+    }
+    
+    // Add event listeners to update totals when inputs change
+    const monthlyInputs = document.querySelectorAll('.monthly-amount');
+    monthlyInputs.forEach(input => {
+        input.addEventListener('input', function() {
+            // Clear previous verification results when inputs change
+            document.getElementById('verification-result').style.display = 'none';
+        });
+    });
+});
+
+/**
+ * Verify quarterly totals against uploaded data
+ */
+function verifyQuarterlyTotals() {
+    // Get values from inputs
+    const month1 = parseFloat(document.getElementById('month1-total').value) || 0;
+    const month2 = parseFloat(document.getElementById('month2-total').value) || 0;
+    const month3 = parseFloat(document.getElementById('month3-total').value) || 0;
+    
+    // Calculate quarterly sum
+    const quarterlySum = month1 + month2 + month3;
+    
+    // Get VIES total from uploaded data
+    let viesTotal = document.querySelector('.dashboard-card.highlight .card-value').textContent;
+    viesTotal = parseFloat(viesTotal.replace('€', '').replace(',', '')) || 0;
+    
+    // Calculate difference
+    const difference = Math.abs(quarterlySum - viesTotal);
+    const percentageDifference = viesTotal > 0 ? (difference / viesTotal) * 100 : 0;
+    
+    // Update UI
+    document.getElementById('quarterly-sum').textContent = `€${quarterlySum.toFixed(2)}`;
+    document.getElementById('vies-total').textContent = `€${viesTotal.toFixed(2)}`;
+    document.getElementById('difference').textContent = `€${difference.toFixed(2)} (${percentageDifference.toFixed(2)}%)`;
+    
+    // Show match status
+    const matchStatus = document.getElementById('match-status');
+    // Consider a match if difference is less than 1% or €10, whichever is smaller
+    const threshold = Math.min(10, viesTotal * 0.01);
+    const isMatch = difference <= threshold;
+    
+    matchStatus.textContent = isMatch 
+        ? 'The totals match! (Difference is within acceptable threshold)' 
+        : 'Warning: The totals do not match. Please review your data.';
+    matchStatus.className = isMatch ? 'match-status match' : 'match-status mismatch';
+    
+    // Show verification result
+    document.getElementById('verification-result').style.display = 'block';
 } 

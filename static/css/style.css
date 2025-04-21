@@ -542,4 +542,73 @@ footer {
     content: " (Approved)";
     color: #2a9d8f;
     font-style: italic;
+}
+
+/* Quarterly Verification Section */
+.quarterly-verification {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #005f73;
+}
+
+.quarterly-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1rem;
+    align-items: flex-end;
+}
+
+.quarterly-inputs .form-group {
+    flex: 1;
+    min-width: 180px;
+    margin-bottom: 0;
+}
+
+.verification-result {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.result-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+}
+
+.result-row:last-child {
+    border-bottom: none;
+}
+
+.result-label {
+    font-weight: bold;
+    color: #333;
+}
+
+.result-value {
+    font-weight: bold;
+}
+
+.match-status {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.match-status.match {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+.match-status.mismatch {
+    background-color: #f8d7da;
+    color: #842029;
 } 
