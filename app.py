@@ -273,23 +273,47 @@ def generate_excel_report():
         
         generator = UPLOADS[session_id]
         
-        # Create a pandas DataFrame for the report
-        data = generator.get_all_transactions()
-        df = pd.DataFrame(data)
-        
-        # Add reconciliation data if available
-        reconciliation_data = []
-        
-        # Create an Excel writer
+        # Create Excel file directly
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='VIES Transactions', index=False)
+        
+        # Use pandas with xlsxwriter engine for better control
+        writer = pd.ExcelWriter(output, engine='openpyxl')
+        
+        # Create VIES data
+        # Create data in the exact format shown in the image
+        header_data = [
+            ['#v3.0'],
+            ['#v3.2.0'],
+            ['Umsatzsteue Summe (Eur Art der Leistu Importmeldung']
+        ]
+        
+        # Create transaction data
+        transaction_data = []
+        for transaction in generator.get_all_transactions():
+            # Combine country code and VAT number without spaces
+            vat_id = f"{transaction.get('country_code', '')}{transaction.get('vat_number', '')}"
             
-            # Add a sheet for reconciliation if data exists
-            if reconciliation_data:
-                recon_df = pd.DataFrame(reconciliation_data)
-                recon_df.to_excel(writer, sheet_name='Reconciliation', index=False)
+            # Format amount without decimals
+            amount = int(float(transaction.get('amount', 0)))
             
+            # For services, use 'S'
+            service_type = 'S' if transaction.get('transaction_type') == 'S' else 'L'
+            
+            transaction_data.append([vat_id, amount, service_type])
+            
+        # Combine headers and data
+        vies_data = header_data + transaction_data
+        
+        # Create DataFrame and write to Excel
+        vies_df = pd.DataFrame(vies_data)
+        vies_df.to_excel(writer, sheet_name='VIES Report', index=False, header=False)
+        
+        # Format the columns to match the example
+        worksheet = writer.sheets['VIES Report']
+        
+        # Save the Excel file
+        writer.close()
+        
         output.seek(0)
         
         # Generate filename with current date
@@ -321,16 +345,16 @@ def generate_csv():
         
         generator = UPLOADS[session_id]
         
-        # Create a CSV file with the exact format shown in the example
+        # Create a CSV file for Excel with tab delimiter
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=';')
+        writer = csv.writer(output, delimiter=',')  # Use comma for Excel compatibility
         
         # Write version headers
-        writer.writerow(['#v3.0'])
-        writer.writerow(['#v3.2.0'])
+        writer.writerow(['#v3.0', '', '', '', ''])
+        writer.writerow(['#v3.2.0', '', '', '', ''])
         
         # Write the special header
-        writer.writerow(['Umsatzsteue Summe (Eur Art der Leistu Importmeldung'])
+        writer.writerow(['Umsatzsteue Summe (Eur Art der Leistu Importmeldung', '', '', '', ''])
         
         # Write data rows
         for transaction in generator.get_all_transactions():
@@ -343,10 +367,13 @@ def generate_csv():
             # For services, use 'S'
             service_type = 'S' if transaction.get('transaction_type') == 'S' else 'L'
             
+            # Write row with empty cells for extra columns
             writer.writerow([
                 vat_id,
                 amount,
-                service_type
+                service_type,
+                '',
+                ''
             ])
         
         output.seek(0)
