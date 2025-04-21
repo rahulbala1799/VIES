@@ -145,9 +145,13 @@ def upload_excel():
                         transaction_type = 'L'  # Default to Goods
                         if 'transaction_type' in column_map:
                             type_value = row[column_map['transaction_type']]
-                            # If "Other services" column has a "1" or similar, use Service type
-                            if not pd.isna(type_value) and str(type_value).strip() in ['1', 'yes', 'y', 'true', 's', 'service']:
-                                transaction_type = 'S'  # Services
+                            # Check for specific text values
+                            if not pd.isna(type_value):
+                                type_text = str(type_value).strip().lower()
+                                if type_text in ['1', 'yes', 'y', 'true', 's', 'service', 'other services', 'other service']:
+                                    transaction_type = 'S'  # Services
+                                elif type_text in ['l', 'goods', 'good', 'supply', 'supplies']:
+                                    transaction_type = 'L'  # Goods/Supplies
                         
                         # Skip rows with missing essential data
                         if not country_code or not vat_number or amount <= 0:
