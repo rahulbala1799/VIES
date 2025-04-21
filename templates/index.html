@@ -87,7 +87,6 @@
                                 <tr>
                                     <th>Line Numbers</th>
                                     <th>Customer Numbers</th>
-                                    <th>Country Code</th>
                                     <th>VAT Number</th>
                                     <th>Amount (EUR)</th>
                                     <th>Type</th>
@@ -103,8 +102,7 @@
                                         <span class="note">Multiple customer numbers</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ transaction.country_code }}</td>
-                                    <td>{{ transaction.vat_number }}</td>
+                                    <td>{{ transaction.country_code }}{{ transaction.vat_number }}</td>
                                     <td class="amount">{{ transaction.amount }}</td>
                                     <td>{{ "Services" if transaction.transaction_type == "S" else "Goods" }}</td>
                                 </tr>
@@ -122,7 +120,6 @@
                                 <tr>
                                     <th>Line Number</th>
                                     <th>Customer</th>
-                                    <th>Country Code</th>
                                     <th>VAT Number</th>
                                     <th>Amount (EUR)</th>
                                     <th>Type</th>
@@ -133,7 +130,6 @@
                                 <tr class="warning-row">
                                     <td>{{ entry.line_number }}</td>
                                     <td>{{ entry.customer if entry.customer else "-" }}</td>
-                                    <td>{{ entry.country_code }}</td>
                                     <td class="missing-data">MISSING</td>
                                     <td class="amount">{{ entry.amount }}</td>
                                     <td>{{ "Services" if entry.transaction_type == "S" else "Goods" }}</td>

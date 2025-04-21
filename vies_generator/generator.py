@@ -67,9 +67,11 @@ class VIESGenerator:
         
         # Write transactions
         for transaction in self.transactions:
+            # Combine country code and VAT number into a single field
+            combined_vat_id = f"{transaction['country_code']}{transaction['vat_number']}"
+            
             writer.writerow([
-                transaction['country_code'],
-                transaction['vat_number'],
+                combined_vat_id,
                 f"{transaction['amount']:.2f}".replace('.', ','),
                 transaction['transaction_type']
             ])
