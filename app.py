@@ -9,6 +9,13 @@ from vies_generator.excel_processor import ExcelProcessor
 import pandas as pd
 import traceback
 from collections import defaultdict
+import io
+import csv
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -253,6 +260,269 @@ def edit_vat():
     except Exception as e:
         print(f"Error editing VAT: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/generate_excel_report', methods=['POST'])
+def generate_excel_report():
+    """Generate an Excel report with reconciliation results"""
+    try:
+        session_id = request.form.get('session_id')
+        
+        if not session_id or session_id not in UPLOADS:
+            flash('Session expired or invalid. Please upload your file again.', 'error')
+            return redirect(url_for('index'))
+        
+        generator = UPLOADS[session_id]
+        
+        # Create a pandas DataFrame for the report
+        data = generator.get_all_transactions()
+        df = pd.DataFrame(data)
+        
+        # Add reconciliation data if available
+        reconciliation_data = []
+        
+        # Create an Excel writer
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='VIES Transactions', index=False)
+            
+            # Add a sheet for reconciliation if data exists
+            if reconciliation_data:
+                recon_df = pd.DataFrame(reconciliation_data)
+                recon_df.to_excel(writer, sheet_name='Reconciliation', index=False)
+            
+        output.seek(0)
+        
+        # Generate filename with current date
+        now = datetime.now()
+        filename = f"VIES_Excel_Report_{now.strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+    
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Excel report generation error: {error_details}")
+        flash(f'Error generating Excel report: {str(e)}', 'error')
+        return redirect(url_for('index'))
+
+@app.route('/generate_csv', methods=['POST'])
+def generate_csv():
+    """Generate a CSV report with specific headers for VIES reporting"""
+    try:
+        session_id = request.form.get('session_id')
+        
+        if not session_id or session_id not in UPLOADS:
+            flash('Session expired or invalid. Please upload your file again.', 'error')
+            return redirect(url_for('index'))
+        
+        generator = UPLOADS[session_id]
+        
+        # Create a CSV file with specific headers required for VIES reporting
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=';')
+        
+        # Write headers - including "Art der Leistung" as requested
+        writer.writerow([
+            'Land', 
+            'USt-IdNr.', 
+            'Art der Leistung', 
+            'Bemessungsgrundlage', 
+            'Kunde'
+        ])
+        
+        # Write data
+        for transaction in generator.get_all_transactions():
+            # Map "Other Services" to "S" for Art der Leistung
+            art_der_leistung = 'S' if transaction.get('transaction_type') == 'S' else 'L'
+            
+            writer.writerow([
+                transaction.get('country_code', ''),
+                transaction.get('vat_number', ''),
+                art_der_leistung,
+                f"{transaction.get('amount', 0):.2f}".replace('.', ','),
+                transaction.get('customer', '')
+            ])
+        
+        output.seek(0)
+        
+        # Generate filename with current date
+        now = datetime.now()
+        filename = f"VIES_CSV_Report_{now.strftime('%Y%m%d')}.csv"
+        
+        return send_file(
+            io.BytesIO(output.getvalue().encode('utf-8-sig')),  # Include BOM for Excel compatibility
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=filename
+        )
+    
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"CSV report generation error: {error_details}")
+        flash(f'Error generating CSV report: {str(e)}', 'error')
+        return redirect(url_for('index'))
+
+@app.route('/generate_pdf', methods=['POST'])
+def generate_pdf():
+    """Generate a PDF report with reconciliation results and transactions"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        session_id = data.get('sessionId')
+        if not session_id or session_id not in UPLOADS:
+            return jsonify({'success': False, 'error': 'Session expired or invalid'}), 400
+        
+        # Get reconciliation data
+        reconciliation = data.get('reconciliation', {})
+        transactions = data.get('transactions', [])
+        suspicious_vats = data.get('suspiciousVats', [])
+        
+        # Create a PDF file
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        styles = getSampleStyleSheet()
+        elements = []
+        
+        # Add title
+        title_style = styles['Heading1']
+        title = Paragraph("VIES Return Reconciliation Report", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 12))
+        
+        # Add date
+        date_style = styles['Normal']
+        date_text = Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", date_style)
+        elements.append(date_text)
+        elements.append(Spacer(1, 12))
+        
+        # Add reconciliation data
+        if reconciliation:
+            subtitle = Paragraph("Quarterly Reconciliation", styles['Heading2'])
+            elements.append(subtitle)
+            elements.append(Spacer(1, 12))
+            
+            # Create reconciliation table
+            monthly_values = reconciliation.get('monthlyValues', ['0', '0', '0'])
+            recon_data = [
+                ['Description', 'Amount'],
+                ['Month 1 Total', f"€{monthly_values[0]}"],
+                ['Month 2 Total', f"€{monthly_values[1]}"],
+                ['Month 3 Total', f"€{monthly_values[2]}"],
+                ['Quarterly Total (VAT Returns)', reconciliation.get('quarterlySum', '€0.00')],
+                ['VIES Total (Uploaded Data)', reconciliation.get('viesTotal', '€0.00')],
+                ['Difference', reconciliation.get('difference', '€0.00')]
+            ]
+            
+            recon_table = Table(recon_data, colWidths=[300, 150])
+            recon_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (1, 0), colors.black),
+                ('ALIGN', (0, 0), (1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, 4), (0, 6), colors.lightgrey),
+                ('GRID', (0, 0), (1, 6), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            elements.append(recon_table)
+            elements.append(Spacer(1, 12))
+            
+            # Add match status
+            status_color = colors.green if reconciliation.get('isMatch', False) else colors.red
+            status_style = ParagraphStyle(
+                'Status',
+                parent=styles['Normal'],
+                fontName='Helvetica-Bold',
+                backColor=status_color,
+                textColor=colors.white,
+                alignment=1,
+                spaceAfter=10,
+                spaceBefore=10,
+                borderPadding=10
+            )
+            status_text = Paragraph(reconciliation.get('matchStatus', ''), status_style)
+            elements.append(status_text)
+            elements.append(Spacer(1, 20))
+        
+        # Add transactions table
+        if transactions:
+            subtitle = Paragraph("VIES Transactions", styles['Heading2'])
+            elements.append(subtitle)
+            elements.append(Spacer(1, 12))
+            
+            # Create transactions table
+            trans_data = [['Line Numbers', 'Customer', 'VAT Number', 'Amount', 'Type']]
+            
+            for t in transactions:
+                trans_data.append([
+                    t.get('lineNumbers', ''),
+                    t.get('customer', ''),
+                    t.get('vatNumber', ''),
+                    t.get('amount', ''),
+                    t.get('type', '')
+                ])
+            
+            trans_table = Table(trans_data, repeatRows=1)
+            trans_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            elements.append(trans_table)
+        
+        # Add suspicious VAT IDs if any
+        if suspicious_vats:
+            elements.append(Spacer(1, 20))
+            subtitle = Paragraph("Suspicious VAT IDs", styles['Heading2'])
+            elements.append(subtitle)
+            elements.append(Spacer(1, 12))
+            
+            # Create suspicious VATs table
+            sus_data = [['Country Code', 'VAT Number', 'Line Number', 'Status']]
+            
+            for vat in suspicious_vats:
+                status = 'Approved' if vat.get('isApproved', False) else 'Not Verified'
+                sus_data.append([
+                    vat.get('countryCode', ''),
+                    vat.get('vatNumber', ''),
+                    vat.get('lineNumber', ''),
+                    status
+                ])
+            
+            sus_table = Table(sus_data, repeatRows=1)
+            sus_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            elements.append(sus_table)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f"VIES_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        )
+    
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"PDF generation error: {error_details}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=os.getenv("FLASK_DEBUG", "True") == "True", 

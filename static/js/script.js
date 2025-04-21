@@ -280,6 +280,12 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('verification-result').style.display = 'none';
         });
     });
+    
+    // Set up PDF generation button
+    const pdfButton = document.getElementById('generate-pdf');
+    if (pdfButton) {
+        pdfButton.addEventListener('click', generatePdfReport);
+    }
 });
 
 /**
@@ -320,4 +326,111 @@ function verifyQuarterlyTotals() {
     
     // Show verification result
     document.getElementById('verification-result').style.display = 'block';
+}
+
+/**
+ * Generate a PDF report with reconciliation results and transactions
+ */
+function generatePdfReport() {
+    // Check if verification has been performed
+    const verificationResult = document.getElementById('verification-result');
+    if (verificationResult.style.display === 'none') {
+        showToast('Please verify quarterly totals first', 'warning');
+        return;
+    }
+    
+    // Get reconciliation data
+    const quarterlySum = document.getElementById('quarterly-sum').textContent;
+    const viesTotal = document.getElementById('vies-total').textContent;
+    const difference = document.getElementById('difference').textContent;
+    const matchStatus = document.getElementById('match-status').textContent;
+    const isMatch = document.getElementById('match-status').classList.contains('match');
+    
+    // Get transaction data from table
+    const transactionTable = document.querySelector('.transaction-table table');
+    const transactions = [];
+    
+    if (transactionTable) {
+        const rows = transactionTable.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 5) {
+                transactions.push({
+                    lineNumbers: cells[0].textContent.trim(),
+                    customer: cells[1].textContent.trim(),
+                    vatNumber: cells[2].textContent.trim(),
+                    amount: cells[3].textContent.trim(),
+                    type: cells[4].textContent.trim()
+                });
+            }
+        });
+    }
+    
+    // Fetch suspicious VAT IDs if available
+    const suspiciousVats = [];
+    const suspiciousTable = document.getElementById('suspicious-vat-table');
+    if (suspiciousTable) {
+        const rows = suspiciousTable.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 3) {
+                suspiciousVats.push({
+                    countryCode: cells[0].textContent.trim(),
+                    vatNumber: cells[1].textContent.trim(),
+                    lineNumber: cells[2].textContent.trim(),
+                    isApproved: row.classList.contains('approved-vat')
+                });
+            }
+        });
+    }
+    
+    // Collect monthly inputs
+    const month1 = document.getElementById('month1-total').value || '0';
+    const month2 = document.getElementById('month2-total').value || '0';
+    const month3 = document.getElementById('month3-total').value || '0';
+    
+    // Send data to server for PDF generation
+    fetch('/generate_pdf', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            reconciliation: {
+                monthlyValues: [month1, month2, month3],
+                quarterlySum: quarterlySum,
+                viesTotal: viesTotal,
+                difference: difference,
+                matchStatus: matchStatus,
+                isMatch: isMatch
+            },
+            transactions: transactions,
+            suspiciousVats: suspiciousVats,
+            sessionId: getSessionId()
+        })
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.blob();
+        } else {
+            throw new Error('Error generating PDF');
+        }
+    })
+    .then(blob => {
+        // Create a download link for the PDF
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = 'VIES_Report.pdf';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        showToast('PDF report generated successfully', 'success');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Error generating PDF report', 'error');
+    });
 } 

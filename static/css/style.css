@@ -611,4 +611,58 @@ footer {
 .match-status.mismatch {
     background-color: #f8d7da;
     color: #842029;
+}
+
+/* Report Buttons */
+.report-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 1.5rem 0;
+}
+
+.btn-report {
+    padding: 10px 16px;
+    border-radius: 6px;
+    border: none;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    min-width: 180px;
+    text-align: center;
+}
+
+.btn-report:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.excel-report {
+    background-color: #217346; /* Excel green */
+}
+
+.excel-report:hover {
+    background-color: #1a5c38;
+}
+
+.csv-report {
+    background-color: #2b579a; /* Blue */
+}
+
+.csv-report:hover {
+    background-color: #1e3d6b;
+}
+
+.pdf-report {
+    background-color: #db4437; /* PDF red */
+}
+
+.pdf-report:hover {
+    background-color: #c13b2f;
+}
+
+.inline-form {
+    display: inline-block;
 } 

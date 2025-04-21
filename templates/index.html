@@ -83,6 +83,59 @@
                         </div>
                     </div>
                     
+                    <!-- Quarterly Return Verification Section - Moved to top -->
+                    <div class="section quarterly-verification">
+                        <h3>Quarterly Return Verification</h3>
+                        <p>Enter the total supplies declared in your monthly VAT returns to verify consistency with uploaded data:</p>
+                        
+                        <div class="quarterly-inputs">
+                            <div class="form-group">
+                                <label for="month1-total">Month 1 (€):</label>
+                                <input type="number" id="month1-total" class="monthly-amount" step="0.01" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="month2-total">Month 2 (€):</label>
+                                <input type="number" id="month2-total" class="monthly-amount" step="0.01" min="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="month3-total">Month 3 (€):</label>
+                                <input type="number" id="month3-total" class="monthly-amount" step="0.01" min="0">
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" id="verify-totals" class="btn-primary">Verify Totals</button>
+                            </div>
+                        </div>
+                        
+                        <div id="verification-result" style="display: none;" class="verification-result">
+                            <div class="result-row">
+                                <span class="result-label">Quarterly Total (VAT Returns):</span>
+                                <span id="quarterly-sum" class="result-value">€0.00</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">VIES Total (Uploaded Data):</span>
+                                <span id="vies-total" class="result-value">€{{ total_amount }}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">Difference:</span>
+                                <span id="difference" class="result-value">€0.00</span>
+                            </div>
+                            <div id="match-status" class="match-status"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Report Generation Buttons -->
+                    <div class="report-buttons">
+                        <form action="{{ url_for('generate_excel_report') }}" method="post" class="inline-form">
+                            <input type="hidden" name="session_id" value="{{ session_id }}">
+                            <button type="submit" class="btn-report excel-report">Generate Excel Report</button>
+                        </form>
+                        <form action="{{ url_for('generate_csv') }}" method="post" class="inline-form">
+                            <input type="hidden" name="session_id" value="{{ session_id }}">
+                            <button type="submit" class="btn-report csv-report">Generate CSV Report</button>
+                        </form>
+                        <button type="button" id="generate-pdf" class="btn-report pdf-report">Generate PDF Report</button>
+                    </div>
+                    
                     <!-- Processed Transactions Table -->
                     <h3>Processed Transactions (Aggregated by VAT ID)</h3>
                     <div class="transaction-table">
@@ -150,46 +203,6 @@
                         </table>
                     </div>
                     {% endif %}
-                    
-                    <!-- Quarterly Return Verification Section -->
-                    <div class="section quarterly-verification">
-                        <h3>Quarterly Return Verification</h3>
-                        <p>Enter the total supplies declared in your monthly VAT returns to verify consistency with uploaded data:</p>
-                        
-                        <div class="quarterly-inputs">
-                            <div class="form-group">
-                                <label for="month1-total">Month 1 (€):</label>
-                                <input type="number" id="month1-total" class="monthly-amount" step="0.01" min="0">
-                            </div>
-                            <div class="form-group">
-                                <label for="month2-total">Month 2 (€):</label>
-                                <input type="number" id="month2-total" class="monthly-amount" step="0.01" min="0">
-                            </div>
-                            <div class="form-group">
-                                <label for="month3-total">Month 3 (€):</label>
-                                <input type="number" id="month3-total" class="monthly-amount" step="0.01" min="0">
-                            </div>
-                            <div class="form-actions">
-                                <button type="button" id="verify-totals" class="btn-primary">Verify Totals</button>
-                            </div>
-                        </div>
-                        
-                        <div id="verification-result" style="display: none;" class="verification-result">
-                            <div class="result-row">
-                                <span class="result-label">Quarterly Total (VAT Returns):</span>
-                                <span id="quarterly-sum" class="result-value">€0.00</span>
-                            </div>
-                            <div class="result-row">
-                                <span class="result-label">VIES Total (Uploaded Data):</span>
-                                <span id="vies-total" class="result-value">€{{ total_amount }}</span>
-                            </div>
-                            <div class="result-row">
-                                <span class="result-label">Difference:</span>
-                                <span id="difference" class="result-value">€0.00</span>
-                            </div>
-                            <div id="match-status" class="match-status"></div>
-                        </div>
-                    </div>
                     
                     <div class="action-buttons">
                     </div>

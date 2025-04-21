@@ -101,4 +101,36 @@ class VIESGenerator:
         with open(filepath, 'w', newline='') as f:
             f.write(content.getvalue())
         
-        return filepath 
+        return filepath
+        
+    def get_all_transactions(self):
+        """
+        Get all transactions in the VIES return.
+        
+        Returns:
+            list: List of transaction dictionaries
+        """
+        return self.transactions
+        
+    def update_vat_id(self, line_number, country_code, vat_number):
+        """
+        Update a VAT ID for transactions with matching line number.
+        
+        Args:
+            line_number (str): Line number to match
+            country_code (str): New country code
+            vat_number (str): New VAT number
+            
+        Returns:
+            bool: True if any transactions were updated, False otherwise
+        """
+        updated = False
+        
+        for transaction in self.transactions:
+            # Check if transaction has line_numbers field and if it matches
+            if 'line_numbers' in transaction and str(line_number) in str(transaction['line_numbers']):
+                transaction['country_code'] = country_code.upper()
+                transaction['vat_number'] = vat_number.replace(' ', '')
+                updated = True
+                
+        return updated 
