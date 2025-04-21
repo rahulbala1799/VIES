@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>German VIES Return Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>German VIES Return Generator</h1>
+        </header>
+        
+        <main>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="alert {% if category %}alert-{{ category }}{% endif %}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <div class="form-container">
+                <div class="info-panel">
+                    <h3>Excel Format Information</h3>
+                    <p>Your Excel file should contain the following columns:</p>
+                    <ul>
+                        <li><strong>Customer/Company Name</strong></li>
+                        <li><strong>Country Indicator</strong> (2-letter country code)</li>
+                        <li><strong>Customer's VAT Number</strong> (without country code)</li>
+                        <li><strong>Value of Supplies EUR</strong> (numeric amount)</li>
+                        <li><strong>Other services</strong> (enter 1 for services, leave empty for goods)</li>
+                        <li><strong>Triangular transactions</strong> (optional)</li>
+                    </ul>
+                    <p>Column names don't need to exactly match. The system will attempt to identify the correct columns.</p>
+                </div>
+                
+                <form action="{{ url_for('upload_excel') }}" method="post" enctype="multipart/form-data" id="upload-form">
+                    <div class="form-section">
+                        <h3>Excel File Upload</h3>
+                        <div class="form-group file-upload">
+                            <label for="excel_file">Upload Excel File:</label>
+                            <input type="file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+                            <div class="file-info">Accepted formats: .xlsx, .xls</div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-submit">Generate VIES Return</button>
+                </form>
+                
+                {% if transactions %}
+                <div class="results-section">
+                    <h3>Uploaded File Contents</h3>
+                    <div class="transaction-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th>Country Code</th>
+                                    <th>VAT Number</th>
+                                    <th>Amount (EUR)</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for transaction in transactions %}
+                                <tr>
+                                    <td>{{ transaction.customer if transaction.customer else "-" }}</td>
+                                    <td>{{ transaction.country_code }}</td>
+                                    <td>{{ transaction.vat_number }}</td>
+                                    <td class="amount">{{ transaction.amount }}</td>
+                                    <td>{{ "Services" if transaction.transaction_type == "S" else "Goods" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="summary">
+                        <p><strong>Total Transactions:</strong> {{ transactions|length }}</p>
+                        <p><strong>Total Amount:</strong> {{ total_amount }} EUR</p>
+                    </div>
+                    
+                    <form action="{{ url_for('generate_vies_file') }}" method="post">
+                        <input type="hidden" name="session_id" value="{{ session_id }}">
+                        <button type="submit" class="btn-download">Download VIES Return File</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </main>
+        
+        <footer>
+            <p>&copy; 2023 German VIES Return Generator</p>
+        </footer>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html> 
