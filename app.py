@@ -263,7 +263,7 @@ def edit_vat():
 
 @app.route('/generate_excel_report', methods=['POST'])
 def generate_excel_report():
-    """Generate an Excel report with reconciliation results"""
+    """Generate an Excel report with VIES format"""
     try:
         session_id = request.form.get('session_id')
         
@@ -276,15 +276,14 @@ def generate_excel_report():
         # Create Excel file directly
         output = io.BytesIO()
         
-        # Use pandas with xlsxwriter engine for better control
+        # Use pandas with openpyxl engine for better control
         writer = pd.ExcelWriter(output, engine='openpyxl')
         
-        # Create VIES data
-        # Create data in the exact format shown in the image
+        # Create header data
         header_data = [
-            ['#v3.0'],
-            ['#v3.2.0'],
-            ['Umsatzsteue Summe (Eur Art der Leistu Importmeldung']
+            ['#v3.0', '', '', ''],
+            ['#v3.2.0', '', '', ''],
+            ['Umsatzsteuer-Identifikationsnummer (USt-IdNr.) *', 'Summe (Euro) *', 'Art der Leistung *', 'Importmeldung']
         ]
         
         # Create transaction data
@@ -299,7 +298,7 @@ def generate_excel_report():
             # For services, use 'S'
             service_type = 'S' if transaction.get('transaction_type') == 'S' else 'L'
             
-            transaction_data.append([vat_id, amount, service_type])
+            transaction_data.append([vat_id, amount, service_type, ''])
             
         # Combine headers and data
         vies_data = header_data + transaction_data
@@ -345,16 +344,16 @@ def generate_csv():
         
         generator = UPLOADS[session_id]
         
-        # Create a CSV file for Excel with tab delimiter
+        # Create a CSV file for Excel with comma delimiter
         output = io.StringIO()
         writer = csv.writer(output, delimiter=',')  # Use comma for Excel compatibility
         
         # Write version headers
-        writer.writerow(['#v3.0', '', '', '', ''])
-        writer.writerow(['#v3.2.0', '', '', '', ''])
+        writer.writerow(['#v3.0', '', '', ''])
+        writer.writerow(['#v3.2.0', '', '', ''])
         
-        # Write the special header
-        writer.writerow(['Umsatzsteue Summe (Eur Art der Leistu Importmeldung', '', '', '', ''])
+        # Write the column headers exactly as shown in the screenshot
+        writer.writerow(['Umsatzsteuer-Identifikationsnummer (USt-IdNr.) *', 'Summe (Euro) *', 'Art der Leistung *', 'Importmeldung'])
         
         # Write data rows
         for transaction in generator.get_all_transactions():
@@ -367,12 +366,11 @@ def generate_csv():
             # For services, use 'S'
             service_type = 'S' if transaction.get('transaction_type') == 'S' else 'L'
             
-            # Write row with empty cells for extra columns
+            # Write row with empty cell for Importmeldung column
             writer.writerow([
                 vat_id,
                 amount,
                 service_type,
-                '',
                 ''
             ])
         
